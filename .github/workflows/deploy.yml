@@ -1,0 +1,62 @@
+# ============================================================
+# .github/workflows/deploy.yml
+# Production deploy to Vercel — triggers @devsecops_lead
+# ============================================================
+name: Deploy — Wingman Production
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Deploy to Vercel
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy to Vercel
+        id: deploy
+        uses: amondnet/vercel-action@v25
+        with:
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
+          vercel-args: "--prod"
+
+      - name: Record deployment to Supabase (DORA tracking)
+        run: |
+          curl -s -X POST "${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}/rest/v1/pipeline_events" \
+            -H "apikey: ${{ secrets.SUPABASE_SERVICE_KEY }}" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "event_type": "deployment",
+              "branch": "main",
+              "commit_sha": "${{ github.sha }}",
+              "status": "success",
+              "agent_triggered": "devsecops_lead",
+              "details": {
+                "vercel_url": "${{ steps.deploy.outputs.preview-url }}",
+                "triggered_by": "${{ github.actor }}",
+                "workflow_run_id": "${{ github.run_id }}"
+              }
+            }'
+
+      - name: Notify @devsecops_lead
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const url = '${{ steps.deploy.outputs.preview-url }}';
+            await github.rest.repos.createCommitComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              commit_sha: context.sha,
+              body: `## 🤖 @devsecops_lead — Deployment Recorded\n\n` +
+                    `✅ **Production deployment successful**\n\n` +
+                    `🔗 ${url}\n\n` +
+                    `DORA metrics updated. Deployment frequency: tracking.\n\n` +
+                    `_Post-deploy checklist: Did you verify the deployment in production? ` +
+                    `What's your rollback plan if a user reports an issue in the next 30 minutes?_`
+            });

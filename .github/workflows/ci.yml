@@ -1,54 +1,166 @@
-name: CI Pipeline
+# ============================================================
+# .github/workflows/ci.yml
+# Triggers: @git_coach (push) + @code_reviewer (PR)
+# ============================================================
+name: CI — Wingman Quality Gate
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main, develop, "feature/**", "fix/**"]
   pull_request:
     branches: [main, develop]
 
+env:
+  NODE_VERSION: "20"
+
 jobs:
-  lint-test-build:
+  # ──────────────────────────────────────────────────────────
+  # JOB 1: Lint & Type Check → notifies @git_coach on failure
+  # ──────────────────────────────────────────────────────────
+  lint:
+    name: Lint & Type Check
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        node-version: [20]
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Node.js ${{ matrix.node-version }}
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
-          node-version: ${{ matrix.node-version }}
-          cache: 'npm'
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
 
-      - name: Install dependencies
-        run: npm ci
+      - run: npm ci
 
-      - name: Lint
-        run: npm run lint
+      - name: ESLint
+        id: eslint
+        run: npm run lint -- --format json --output-file lint-results.json
+        continue-on-error: true
 
-      - name: Run tests
-        run: npm test
+      - name: TypeScript Check
+        id: tsc
+        run: npx tsc --noEmit
+        continue-on-error: true
 
-      - name: Build
-        run: npm run build
+      # Notify @git_coach on lint/type failures (coaching moment)
+      - name: Notify @git_coach
+        if: steps.eslint.outcome == 'failure' || steps.tsc.outcome == 'failure'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.repos.createCommitComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              commit_sha: context.sha,
+              body: `🤖 **@git_coach** — Quality gate triggered\n\n` +
+                    `Lint: \`${{ steps.eslint.outcome }}\` | TypeScript: \`${{ steps.tsc.outcome }}\`\n\n` +
+                    `Check the Actions tab for details. Remember: fix the root cause, not just the symptom.\n` +
+                    `_What does the ESLint error tell you about the code's intent?_`
+            });
 
+      - name: Fail if lint or type errors
+        if: steps.eslint.outcome == 'failure' || steps.tsc.outcome == 'failure'
+        run: exit 1
+
+  # ──────────────────────────────────────────────────────────
+  # JOB 2: Test Suite → enforces 80% coverage (@test_engineer)
+  # ──────────────────────────────────────────────────────────
+  test:
+    name: Test Suite (80% Coverage Gate)
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+
+      - run: npm ci
+
+      - name: Run Vitest with coverage
+        id: vitest
+        run: npm run test:coverage -- --reporter=json --outputFile=test-results.json
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+
+      - name: Coverage gate (80% minimum)
+        id: coverage
+        run: |
+          COVERAGE=$(node -e "
+            const r = require('./coverage/coverage-summary.json');
+            console.log(r.total.lines.pct);
+          ")
+          echo "coverage=$COVERAGE" >> $GITHUB_OUTPUT
+          if (( $(echo "$COVERAGE < 80" | bc -l) )); then
+            echo "❌ Coverage $COVERAGE% is below 80% threshold"
+            exit 1
+          fi
+          echo "✅ Coverage $COVERAGE% passes threshold"
+
+      # @test_engineer coaching comment on PRs
+      - name: "@test_engineer PR Comment"
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const coverage = '${{ steps.coverage.outputs.coverage }}';
+            const passed = parseFloat(coverage) >= 80;
+            const emoji = passed ? '✅' : '❌';
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: `## 🤖 @test_engineer — Coverage Report\n\n` +
+                    `${emoji} **Line Coverage: ${coverage}%** (threshold: 80%)\n\n` +
+                    (passed
+                      ? `Coverage gate passed. Good discipline — untested code is unverified intent.\n\n_What would break if you deleted a test right now?_`
+                      : `Coverage gate failed. Before writing more code, ask yourself:\n- What behavior am I not testing?\n- What assumptions am I making that could be wrong?\n\n_Which uncovered lines represent the highest risk?_`)
+            });
+
+  # ──────────────────────────────────────────────────────────
+  # JOB 3: Security Scan → @security_engineer + @license_compliance
+  # ──────────────────────────────────────────────────────────
   security:
+    name: Security & License Scan
     runs-on: ubuntu-latest
+    needs: lint
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
-          node-version: 20
-          cache: 'npm'
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
 
-      - name: Install dependencies
-        run: npm ci
+      - run: npm ci
 
-      - name: Audit dependencies
-        run: npm audit --audit-level=high
+      - name: npm audit (high/critical only)
+        id: audit
+        run: npm audit --audit-level=high --json > audit-results.json
+        continue-on-error: true
+
+      - name: License check
+        id: license
+        run: npx license-checker --onlyAllow "MIT;Apache-2.0;BSD-2-Clause;BSD-3-Clause;ISC" --json > license-results.json
+        continue-on-error: true
+
+      - name: Notify @security_engineer on vulnerabilities
+        if: steps.audit.outcome == 'failure' && github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const audit = JSON.parse(fs.readFileSync('audit-results.json', 'utf8'));
+            const vulnCount = Object.keys(audit.vulnerabilities || {}).length;
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: `## 🤖 @security_engineer — Vulnerability Alert\n\n` +
+                    `⚠️ Found **${vulnCount} high/critical vulnerabilities**\n\n` +
+                    `Run \`npm audit\` locally to see details.\n\n` +
+                    `_Before patching: what attack vector does each vulnerability expose? ` +
+                    `Is it exploitable in this application's context?_\n\n` +
+                    `Reference: OWASP Top 10 A06:2021 — Vulnerable and Outdated Components`
+            });

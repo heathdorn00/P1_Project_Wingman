@@ -1,0 +1,44 @@
+# ============================================================
+# .github/workflows/code-review.yml
+# PR opened/updated → @code_reviewer via AX Platform webhook
+# ============================================================
+name: Code Review — @code_reviewer
+
+on:
+  pull_request:
+    types: [opened, synchronize, ready_for_review]
+
+jobs:
+  ai-code-review:
+    name: Trigger @code_reviewer
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.draft == false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Generate diff for @code_reviewer
+        id: diff
+        run: |
+          git diff origin/${{ github.base_ref }}...HEAD > pr-diff.txt
+          echo "diff_lines=$(wc -l < pr-diff.txt)" >> $GITHUB_OUTPUT
+
+      - name: Send to @code_reviewer via AX Platform
+        run: |
+          DIFF=$(cat pr-diff.txt | head -500)  # first 500 lines
+          curl -s -X POST "${{ secrets.AX_PLATFORM_WEBHOOK_URL }}" \
+            -H "Authorization: Bearer ${{ secrets.AX_PLATFORM_API_KEY }}" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "agent": "code_reviewer",
+              "trigger": "pull_request",
+              "context": {
+                "pr_number": ${{ github.event.pull_request.number }},
+                "pr_title": "${{ github.event.pull_request.title }}",
+                "author": "${{ github.event.pull_request.user.login }}",
+                "base_branch": "${{ github.base_ref }}",
+                "diff_lines": ${{ steps.diff.outputs.diff_lines }},
+                "repo": "${{ github.repository }}"
+              }
+            }'
