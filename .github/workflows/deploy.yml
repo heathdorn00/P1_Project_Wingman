@@ -48,14 +48,16 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
-            const url = '${{ steps.deploy.outputs.preview-url }}';
+            const previewUrl = '${{ steps.deploy.outputs.preview-url }}';
+            const prodUrl = 'https://wingman.digitaltransformations.com';
             await github.rest.repos.createCommitComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
               commit_sha: context.sha,
               body: `## 🤖 @devsecops_lead — Deployment Recorded\n\n` +
                     `✅ **Production deployment successful**\n\n` +
-                    `🔗 ${url}\n\n` +
+                    `🔗 Production: ${prodUrl}\n` +
+                    `🔗 Preview: ${previewUrl}\n\n` +
                     `DORA metrics updated. Deployment frequency: tracking.\n\n` +
                     `_Post-deploy checklist: Did you verify the deployment in production? ` +
                     `What's your rollback plan if a user reports an issue in the next 30 minutes?_`
