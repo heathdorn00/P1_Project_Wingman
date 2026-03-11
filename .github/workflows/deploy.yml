@@ -49,7 +49,7 @@ jobs:
         with:
           script: |
             const previewUrl = '${{ steps.deploy.outputs.preview-url }}';
-            const prodUrl = 'https://wingman.digitaltransformations.com';
+            const prodUrl = 'https://wingman.fulcrumdefense.ai';
             await github.rest.repos.createCommitComment({
               owner: context.repo.owner,
               repo: context.repo.repo,

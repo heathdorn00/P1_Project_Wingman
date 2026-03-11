@@ -2,6 +2,7 @@
 
 import { AgentStatusGrid } from "@/components/dashboard/AgentStatusGrid";
 import { AirmanProgressCard } from "@/components/dashboard/AirmanProgressCard";
+import { AirmanStoryTracker } from "@/components/dashboard/AirmanStoryTracker";
 import { CoachingLogFeed } from "@/components/dashboard/CoachingLogFeed";
 import { DoraMetricsPanel } from "@/components/dashboard/DoraMetricsPanel";
 import { SprintVelocityChart } from "@/components/dashboard/SprintVelocityChart";
@@ -116,7 +117,20 @@ export default function WingmanDashboard() {
 
         <div className="col-span-12"><Separator className="bg-zinc-800" /></div>
 
-        {/* Row 3: Velocity (7) + Coaching Log (5) */}
+        {/* Row 3: Airman Story Tracker */}
+        <section className="col-span-6">
+          <SectionHeader label="STORY TRACKER — RODRIGUEZ" sub="Completed User Stories · Story Points Delivered" />
+          <AirmanStoryTracker airmanId="rodriguez" />
+        </section>
+
+        <section className="col-span-6">
+          <SectionHeader label="STORY TRACKER — DRAKE" sub="Completed User Stories · Story Points Delivered" />
+          <AirmanStoryTracker airmanId="drake" />
+        </section>
+
+        <div className="col-span-12"><Separator className="bg-zinc-800" /></div>
+
+        {/* Row 4: Velocity (7) + Coaching Log (5) */}
         <section className="col-span-7">
           <SectionHeader label="SPRINT VELOCITY" sub="Story Points Delivered · Sprints 1–3" />
           <SprintVelocityChart />

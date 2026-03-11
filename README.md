@@ -4,7 +4,7 @@ AI-powered engineering mentorship platform for U.S. Air Force Platform One. 15-a
 
 Built on AX Platform MCP-native multi-agent orchestration.
 
-**Live:** [wingman.digitaltransformations.com](https://wingman.digitaltransformations.com)
+**Live:** [wingman.fulcrumdefense.ai](https://wingman.fulcrumdefense.ai)
 
 ## Tech Stack
 
