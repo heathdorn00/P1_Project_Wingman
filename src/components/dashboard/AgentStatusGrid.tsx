@@ -37,17 +37,69 @@ const providerBadge: Record<string, string> = {
   gemini: 'text-blue-400',
 };
 
+const TIERS = ['All', 'TRAIN', 'COACH', 'CATCH'] as const;
+type TierFilter = (typeof TIERS)[number];
+
+const tierTabColor: Record<string, string> = {
+  All: 'border-zinc-500 text-zinc-300',
+  TRAIN: 'border-blue-500 text-blue-400',
+  COACH: 'border-violet-500 text-violet-400',
+  CATCH: 'border-orange-500 text-orange-400',
+};
+
+const tierTabActive: Record<string, string> = {
+  All: 'bg-zinc-700/50 border-zinc-400 text-white',
+  TRAIN: 'bg-blue-900/50 border-blue-400 text-blue-300',
+  COACH: 'bg-violet-900/50 border-violet-400 text-violet-300',
+  CATCH: 'bg-orange-900/50 border-orange-400 text-orange-300',
+};
+
 export function AgentStatusGrid() {
   const [agents, setAgents] = useState<AXAgent[]>([]);
+  const [activeTier, setActiveTier] = useState<TierFilter>('All');
 
   useEffect(() => {
     // TODO: Replace with listAgents() from ax-platform client
     setAgents(MOCK_AGENTS);
   }, []);
 
+  const filteredAgents = activeTier === 'All'
+    ? agents
+    : agents.filter((a) => a.tier === activeTier);
+
+  const tierCounts: Record<string, number> = {
+    All: agents.length,
+    TRAIN: agents.filter((a) => a.tier === 'TRAIN').length,
+    COACH: agents.filter((a) => a.tier === 'COACH').length,
+    CATCH: agents.filter((a) => a.tier === 'CATCH').length,
+  };
+
   return (
-    <div className="grid grid-cols-5 gap-2">
-      {agents.map((agent) => (
+    <div>
+      {/* Tier Filter Tabs — PW-12 (airman_rodriguez) */}
+      <div className="flex gap-2 mb-3" role="tablist" aria-label="Filter agents by tier">
+        {TIERS.map((tier) => (
+          <button
+            key={tier}
+            role="tab"
+            aria-selected={activeTier === tier}
+            onClick={() => setActiveTier(tier)}
+            onKeyDown={(e) => {
+              const idx = TIERS.indexOf(activeTier);
+              if (e.key === 'ArrowRight') setActiveTier(TIERS[(idx + 1) % TIERS.length]);
+              if (e.key === 'ArrowLeft') setActiveTier(TIERS[(idx - 1 + TIERS.length) % TIERS.length]);
+            }}
+            className={`px-3 py-1.5 rounded border text-xs font-bold tracking-wide transition ${
+              activeTier === tier ? tierTabActive[tier] : `${tierTabColor[tier]} border-zinc-700 hover:brightness-125`
+            }`}
+          >
+            {tier} <span className="ml-1 opacity-70">({tierCounts[tier]})</span>
+          </button>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-5 gap-2" role="tabpanel" aria-label={`${activeTier} agents`}>
+      {filteredAgents.map((agent) => (
         <div
           key={agent.id}
           className={`rounded border px-3 py-2 ${tierColor[agent.tier]} hover:brightness-125 transition`}
@@ -65,6 +117,7 @@ export function AgentStatusGrid() {
           </div>
         </div>
       ))}
+      </div>
     </div>
   );
 }
